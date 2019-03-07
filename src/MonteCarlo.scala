@@ -1,3 +1,9 @@
+import scala.util.{Failure, Random, Success}
+import Stream._
+import scala.concurrent._
+import ExecutionContext.Implicits.global
+import scala.concurrent.duration._
+
 class MonteCarlo {
 
 }
@@ -11,68 +17,117 @@ class Trace {
 
 }
 
-//true if it is on the initial side of the river, false if it is on the other side
-//case class State(farmer: Boolean, wolf: Boolean, goat: Boolean, cabbage: Boolean)
 
-//Represents one path between two states in the state graph
-//case class Edge(source: State, target: State)
+//function that generate valid traces given N -> acho que nao precisa
 
-//function that generates a state given one state
-//(function that generates all possible combinations given a state)
-
-//receives state returns list with all combinations
-
-
-//variable that keeps all the states
-//function that checks if that state is valid
-//function that generates paths
-
-//case class State(value: String, isValid: Boolean)
-
-//object Item extends Enumeration {
-//  type Item = Value
-//  val FARMER, WOLF, GOAT, CABBAGE = Value
-//}
-
-
-
-//replace to change state
-//loop over with zip
-//loop over all possible combinations
-
-
-//
-////check if state is valid
-//def checkState()
+//function that checks if a trace is valid
+//function that generates random traces of maximum size N+2 (stops when something is eaten or final state)
 
 object Hello extends App {
 
-  //Change object position
-  def move( item: Char ) : Char = {
-    if(item == '1')  return '0' else return '1'
-  }
-
-  //Move more than one object
+  //Change state given list of objects
   def  moveObjects(value: String, positions: List[Int]) : String = {
+    //Change state
+    def move( item: Char ) : Char = {
+      if(item == '1')  return '0' else return '1'
+    }
     return positions.foldLeft(value)((s, i) => s.updated(i, move(value.charAt(i))))
   }
 
-
   def generateValidStates( source: String ) : List[String] = {
-
-    //Mapping across possible objects: wolf, goat or cabbage
+    //Mapping across possible objects: cabbage, goat or wolf
     val possibleStates = List(1,2,3).map(item => {
       //Farmer can only move objects which are on his side
-      if(source.charAt(0) == source.charAt(item)) moveObjects(source, List(0,item))
+      if(source.charAt(0) == source.charAt(item)) moveObjects(source, List(0, item))
       else ""
     })
 
-    //The farmer can always cross the river alone
-    return possibleStates.filter(x => x != "") ::: List(source.updated(0, move(source.charAt(0))))
+    //Add the state in which the farmer crosses the river alone
+    return possibleStates.filter(x => x != "") ::: List(moveObjects(source, List(0)))
   }
 
-  var initialState = "1111"
-  var finalState = "0000"
+  def checkEndTrace(state: String) : Boolean = {
+      if (state.equals("0000")) return true
+      else if((state.charAt(0) != state.charAt(1)) && (state.charAt(1) == state.charAt(2))) return true
+      else if((state.charAt(0) != state.charAt(2)) && (state.charAt(2) == state.charAt(3))) return true
+      else return false
+  }
 
-  List("0111", "0110", "1101", "1001", "0001").foreach(x => println(generateValidStates(x)))
+  def checkFinalState(state: String) : Boolean = {
+    return state.equals("0000")
+  }
+
+  def checkBadState(state: String) : Boolean = {
+    if((state.charAt(0) != state.charAt(1)) && (state.charAt(1) == state.charAt(2))) return true
+    else if((state.charAt(0) != state.charAt(2)) && (state.charAt(2) == state.charAt(3))) return true
+    else return false
+  }
+
+  def checkIfTraceValid(trace: List[String]) : Boolean = {
+    return trace.filter(x => !checkBadState(x)).length == trace.length && checkFinalState(trace.last)
+  }
+
+  def getNextNeighbor(source: String) : String = {
+    val neighbors = generateValidStates(source)
+    //Randomly choose next state
+    val r = Random.nextInt(neighbors.size)
+    val nextState = neighbors(r)
+    return nextState
+  }
+
+  def randomWalker(pathSizeLimit: Int) : List[String]  = {
+    var initialState = "1111"
+    val walker = Stream.iterate(initialState)(getNextNeighbor).take(pathSizeLimit)
+    return walker.toList
+  }
+
+  //println(randomWalker(10))
+
+
+
+
+  val nIter = 100000
+  val pathSizeLimit = 10
+//
+//  val fu = Future {
+//    //for {c <- 0 until nIter} yield {
+//      checkIfTraceValid(randomWalker(pathSizeLimit))
+//  }
+//    fu.onComplete(r => println(r))
+//  fu.foreach(r => print())
+
+//
+//  for {c <- 0 until nIter} yield {
+//    println("loop working")
+//    checkIfTraceValid(randomWalker(pathSizeLimit))}
+//}
+//
+//  //for with 4 threads -> each future returns a valid/not valid array. join them
+  val nCores = 4
+//
+  val futures = for {
+    c <- 0 until nCores
+  } yield {
+    Future {
+      for {c <- 0 until nIter} yield {
+        checkIfTraceValid(randomWalker(pathSizeLimit)) }
+    }
+}
+
+  val results = Future.sequence(futures)
+
+  val all = Await.result(results, scala.concurrent.duration.Duration.Inf).flatten
+
+  //all.foreach(x => println(x))
+  println(all.length)
+  println("valid traces")
+  println(all.filter(x => x == true).length)
+
+//  println("testeee")
+//
+//  //1 if the farmer or object is on the initial side, 0 if on the other side of the river
+//  var initialState = "1111"
+//  var finalState = "0000"
+
+  //List("0111", "0110", "1101", "1001", "0001").foreach(x => println(generateValidStates(x)))
 }
