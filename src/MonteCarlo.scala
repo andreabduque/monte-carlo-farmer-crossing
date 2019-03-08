@@ -35,9 +35,12 @@ object StateGraph {
     else return false
   }
 
-  //FIX: check if final state is before (paths with less then n+2)
   def checkIfTraceValid(trace: List[String]) : Boolean = {
-    return trace.filter(x => !checkBadState(x)).length == trace.length && checkFinalState(trace.last)
+    return trace.filter(x => checkBadState(x)).isEmpty
+  }
+
+  def checkIfTrace(trace : List[String]) : Boolean = {
+    return !trace.isEmpty && !trace.filter(x => checkFinalState(x)).isEmpty
   }
 
 }
@@ -51,7 +54,9 @@ class MonteCarlo(nIter: Int, nCores: Int, pathSizeLimit: Int) {
     } yield {
       Future {
         for {c <- 0 until nIter} yield {
-          graph.checkIfTraceValid(randomWalker()) }
+          var randomPath = randomWalker()
+          while(!graph.checkIfTrace(randomPath)) randomPath = randomWalker()
+          graph.checkIfTraceValid(randomPath) }
       }
     }
 
@@ -67,21 +72,25 @@ class MonteCarlo(nIter: Int, nCores: Int, pathSizeLimit: Int) {
       val nextState = neighbors(r)
       return nextState
     }
-    Stream.iterate(graph.initialState)(getNextNeighbor)
+    var randomPath = Stream.iterate(graph.initialState)(getNextNeighbor)
       .take(pathSizeLimit).toList
+
+    return randomPath.slice(0, randomPath.indexOf(graph.finalState) + 1)
   }
 }
 
 
 object Main extends App {
-  val nIter = 25000
+  val nIter = 100
   val nCores = 4
   val pathSizeLimit = 10
 
   val simulator = new MonteCarlo(nIter, nCores, pathSizeLimit)
   val results = simulator.run()
 
-  println("Valid Trace Probability",results.filter(x => x == true).length/ results.length)
+  println(results.length)
+  println(results.filter(x => x == true).length)
+  println("Valid Trace Probability",results.filter(x => x == true).length.toDouble/ results.length)
 
   //List("0111", "0110", "1101", "1001", "0001").foreach(x => println(generateValidStates(x)))
 }
